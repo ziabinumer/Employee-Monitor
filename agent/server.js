@@ -186,9 +186,10 @@ function startListening(ws) {
             const ffmpegArgs = [
                 '-f', 'dshow',
                 '-i', `audio=${MIC_DEVICE}`,
-                '-c:a', 'libopus',
-                '-f', 'webm',
-                'pipe:1' // Stream output to stdout
+                '-ar', '48000',
+                '-ac', '1',
+                '-f', 'f32le',
+                'pipe:1' // Stream raw PCM float32 to stdout
             ];
 
             audioProcess = spawn('ffmpeg', ffmpegArgs);
