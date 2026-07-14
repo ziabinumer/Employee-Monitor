@@ -253,7 +253,7 @@
         <!-- Cards injected by JS -->
     </main>
 
-    <audio id="global-audio" controls autoplay></audio>
+
 
     <script>
         // Configuration
@@ -474,52 +474,38 @@
             }
         }
 
-        let mediaSource = null;
-        let sourceBuffer = null;
-        let queue = [];
+        let audioContext = null;
+        let nextPlayTime = 0;
         let listeningTo = null;
+        const SAMPLE_RATE = 48000;
 
         function initAudio() {
-            const audioEl = document.getElementById('global-audio');
-            if (mediaSource) {
-                if (mediaSource.readyState === 'open') {
-                    mediaSource.endOfStream();
-                }
+            if (audioContext) {
+                audioContext.close();
             }
-            mediaSource = new MediaSource();
-            audioEl.src = URL.createObjectURL(mediaSource);
-
-            mediaSource.addEventListener('sourceopen', () => {
-                try {
-                    sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
-                    sourceBuffer.addEventListener('updateend', () => {
-                        if (queue.length > 0 && !sourceBuffer.updating) {
-                            try {
-                                sourceBuffer.appendBuffer(queue.shift());
-                            } catch (e) {
-                                console.error('Error appending queued buffer:', e);
-                            }
-                        }
-                    });
-                } catch (e) {
-                    console.error('Error creating SourceBuffer:', e);
-                }
-            });
+            audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+            nextPlayTime = 0;
         }
 
-        function queueBuffer(buffer) {
-            if (!sourceBuffer || mediaSource.readyState !== 'open') return;
+        function playAudioChunk(buffer) {
+            if (!audioContext || audioContext.state === 'closed') return;
 
-            if (!sourceBuffer.updating) {
-                try {
-                    sourceBuffer.appendBuffer(buffer);
-                } catch (e) {
-                    console.error('Error appending buffer:', e);
-                    queue.push(buffer); // Try again later
-                }
-            } else {
-                queue.push(buffer);
+            const float32Array = new Float32Array(buffer);
+            if (float32Array.length === 0) return;
+
+            const audioBuffer = audioContext.createBuffer(1, float32Array.length, SAMPLE_RATE);
+            audioBuffer.getChannelData(0).set(float32Array);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+
+            const currentTime = audioContext.currentTime;
+            if (nextPlayTime < currentTime) {
+                nextPlayTime = currentTime + 0.05;
             }
+            source.start(nextPlayTime);
+            nextPlayTime += audioBuffer.duration;
         }
 
         function handleMessage(laptopId, event) {
@@ -545,7 +531,7 @@
             } else if (event.data instanceof Blob) {
                 if (laptopId === listeningTo) {
                     event.data.arrayBuffer().then(buffer => {
-                        queueBuffer(buffer);
+                        playAudioChunk(buffer);
                     });
                 }
             }
@@ -641,8 +627,12 @@
                 }
 
                 listeningTo = laptopId;
-                queue = []; // Clear queue
                 initAudio();
+
+                // Resume AudioContext (user gesture from button click satisfies autoplay policy)
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
 
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ command: 'start_listening' }));
@@ -650,10 +640,6 @@
 
                 btnListen.textContent = 'Stop Listening';
                 btnListen.style.backgroundColor = 'var(--danger)';
-
-                // Ensure audio is playing (requires user interaction first, which the button click provides)
-                const audioEl = document.getElementById('global-audio');
-                audioEl.play().catch(e => console.log('Autoplay prevented', e));
             }
         }
 
