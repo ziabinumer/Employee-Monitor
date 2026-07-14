@@ -104,7 +104,8 @@
             transition: opacity 0.2s;
         }
 
-        .card-body.enabled {
+        .status-online ~ .card-body,
+        .status-recording ~ .card-body {
             opacity: 1;
             pointer-events: auto;
         }
@@ -508,7 +509,11 @@
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'pong') {
-                        updateStatus(laptopId, 'online');
+                        // Don't overwrite 'recording' status with 'online' on pong
+                        const statusBadge = document.getElementById(`status-${laptopId}`);
+                        if (!statusBadge || !statusBadge.classList.contains('status-recording')) {
+                            updateStatus(laptopId, 'online');
+                        }
                     } else if (data.type === 'status_update') {
                         if (data.isRecording) {
                             updateStatus(laptopId, 'recording');
@@ -550,20 +555,16 @@
             // Toggle buttons
             const card = document.getElementById(`card-${laptopId}`);
             if (card) {
-                const cardBody = card.querySelector('.card-body');
                 const btnStart = card.querySelector('.btn-start');
                 const btnStop = card.querySelector('.btn-stop');
-
+                
                 if (state === 'offline') {
-                    cardBody.classList.remove('enabled');
                     btnStart.disabled = true;
                     btnStop.disabled = true;
                 } else if (state === 'recording') {
-                    cardBody.classList.add('enabled');
                     btnStart.disabled = true;
                     btnStop.disabled = false;
                 } else {
-                    cardBody.classList.add('enabled');
                     btnStart.disabled = false;
                     btnStop.disabled = true;
                 }
@@ -577,9 +578,8 @@
                 const title = titleInput ? titleInput.value : 'recording';
                 ws.send(JSON.stringify({ command: 'start_recording', title: title }));
                 
-                // Optimistic UI update
-                const btnStart = document.getElementById(`card-${laptopId}`).querySelector('.btn-start');
-                btnStart.disabled = true;
+                // Optimistic UI update — show recording state immediately
+                updateStatus(laptopId, 'recording');
             }
         }
 
@@ -588,9 +588,8 @@
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ command: 'stop_recording' }));
                 
-                // Optimistic UI update
-                const btnStop = document.getElementById(`card-${laptopId}`).querySelector('.btn-stop');
-                btnStop.disabled = true;
+                // Optimistic UI update — revert to online state immediately
+                updateStatus(laptopId, 'online');
             }
         }
 
