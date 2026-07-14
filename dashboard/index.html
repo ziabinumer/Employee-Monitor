@@ -291,24 +291,75 @@
             }
         }
 
+        let mediaSource = null;
+        let sourceBuffer = null;
+        let queue = [];
+        let listeningTo = null;
+
+        function initAudio() {
+            const audioEl = document.getElementById('global-audio');
+            if (mediaSource) {
+                if (mediaSource.readyState === 'open') {
+                    mediaSource.endOfStream();
+                }
+            }
+            mediaSource = new MediaSource();
+            audioEl.src = URL.createObjectURL(mediaSource);
+            
+            mediaSource.addEventListener('sourceopen', () => {
+                try {
+                    sourceBuffer = mediaSource.addSourceBuffer('audio/ogg; codecs="opus"');
+                    sourceBuffer.addEventListener('updateend', () => {
+                        if (queue.length > 0 && !sourceBuffer.updating) {
+                            try {
+                                sourceBuffer.appendBuffer(queue.shift());
+                            } catch (e) {
+                                console.error('Error appending queued buffer:', e);
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error creating SourceBuffer:', e);
+                }
+            });
+        }
+
+        function queueBuffer(buffer) {
+            if (!sourceBuffer || mediaSource.readyState !== 'open') return;
+            
+            if (!sourceBuffer.updating) {
+                try {
+                    sourceBuffer.appendBuffer(buffer);
+                } catch (e) {
+                    console.error('Error appending buffer:', e);
+                    queue.push(buffer); // Try again later
+                }
+            } else {
+                queue.push(buffer);
+            }
+        }
+
         function handleMessage(laptopId, event) {
-            // For now we expect JSON strings. Later audio might be binary.
             if (typeof event.data === 'string') {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'pong') {
-                        // Just confirms online status
                         updateStatus(laptopId, 'online');
                     } else if (data.type === 'status_update') {
-                        // Update UI based on recording status
                         if (data.isRecording) {
                             updateStatus(laptopId, 'recording');
                         } else {
-                            updateStatus(laptopId, 'online'); // online but not recording
+                            updateStatus(laptopId, 'online');
                         }
                     }
                 } catch (e) {
                     console.error('Failed to parse message', e);
+                }
+            } else if (event.data instanceof Blob) {
+                if (laptopId === listeningTo) {
+                    event.data.arrayBuffer().then(buffer => {
+                        queueBuffer(buffer);
+                    });
                 }
             }
         }
@@ -376,7 +427,47 @@
         }
 
         function toggleListen(laptopId) {
-            console.log('Toggle listen', laptopId);
+            const ws = connections.get(laptopId);
+            const btnListen = document.getElementById(`card-${laptopId}`).querySelector('.btn-listen');
+            
+            if (listeningTo === laptopId) {
+                // Stop listening
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ command: 'stop_listening' }));
+                }
+                listeningTo = null;
+                btnListen.textContent = 'Listen Live';
+                btnListen.style.backgroundColor = 'var(--success)';
+            } else {
+                // Start listening to new laptop
+                if (listeningTo) {
+                    // Stop previous
+                    const oldWs = connections.get(listeningTo);
+                    if (oldWs && oldWs.readyState === WebSocket.OPEN) {
+                        oldWs.send(JSON.stringify({ command: 'stop_listening' }));
+                    }
+                    const oldBtn = document.getElementById(`card-${listeningTo}`).querySelector('.btn-listen');
+                    if (oldBtn) {
+                        oldBtn.textContent = 'Listen Live';
+                        oldBtn.style.backgroundColor = 'var(--success)';
+                    }
+                }
+                
+                listeningTo = laptopId;
+                queue = []; // Clear queue
+                initAudio();
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ command: 'start_listening' }));
+                }
+                
+                btnListen.textContent = 'Stop Listening';
+                btnListen.style.backgroundColor = 'var(--danger)';
+                
+                // Ensure audio is playing (requires user interaction first, which the button click provides)
+                const audioEl = document.getElementById('global-audio');
+                audioEl.play().catch(e => console.log('Autoplay prevented', e));
+            }
         }
 
     </script>

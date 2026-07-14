@@ -13,6 +13,8 @@ const LAPTOP_ID = process.env.LAPTOP_ID || os.hostname();
 let isRecording = false;
 let listenersCount = 0;
 let recordingProcess = null;
+let audioProcess = null;
+const audioListeners = new Set();
 
 // Audio Device Configuration (should be updated per laptop)
 const MIC_DEVICE = process.env.MIC_DEVICE || 'Microphone (Realtek(R) Audio)';
@@ -51,6 +53,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         log(`Connection from ${clientIp} closed`);
+        stopListening(ws);
     });
 
     ws.on('error', (error) => {
@@ -87,6 +90,12 @@ function handleCommand(ws, data) {
                 break;
             }
             stopRecording();
+            break;
+        case 'start_listening':
+            startListening(ws);
+            break;
+        case 'stop_listening':
+            stopListening(ws);
             break;
         default:
             log(`Unknown command received: ${data.command}`);
@@ -160,3 +169,64 @@ function broadcastStatus() {
         }
     });
 }
+
+function startListening(ws) {
+    if (!audioListeners.has(ws)) {
+        audioListeners.add(ws);
+        listenersCount = audioListeners.size;
+        
+        notifier.notify({
+            title: 'Academy Monitor',
+            message: 'Your audio is now being listened to for quality purposes.',
+            sound: true
+        });
+
+        if (!audioProcess) {
+            log('Starting audio streaming process');
+            const ffmpegArgs = [
+                '-f', 'dshow',
+                '-i', `audio=${MIC_DEVICE}`,
+                '-c:a', 'libopus',
+                '-f', 'ogg',
+                'pipe:1' // Stream output to stdout
+            ];
+            
+            audioProcess = spawn('ffmpeg', ffmpegArgs);
+            
+            audioProcess.stdout.on('data', (chunk) => {
+                for (const listener of audioListeners) {
+                    if (listener.readyState === WebSocket.OPEN) {
+                        listener.send(chunk);
+                    }
+                }
+            });
+            
+            audioProcess.stderr.on('data', () => { /* ignore stderr */ });
+
+            audioProcess.on('close', (code) => {
+                log(`Audio process exited with code ${code}`);
+                audioProcess = null;
+            });
+        }
+        broadcastStatus();
+    }
+}
+
+function stopListening(ws) {
+    if (audioListeners.has(ws)) {
+        audioListeners.delete(ws);
+        listenersCount = audioListeners.size;
+        
+        if (audioListeners.size === 0 && audioProcess) {
+            notifier.notify({
+                title: 'Academy Monitor',
+                message: 'Live listening has stopped.',
+                sound: true
+            });
+            audioProcess.kill('SIGINT');
+            log('Stopped audio streaming process');
+        }
+        broadcastStatus();
+    }
+}
+
