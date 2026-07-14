@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -49,7 +50,7 @@
             border: 1px solid var(--border-color);
             border-radius: 0.5rem;
             padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .card-header {
@@ -91,9 +92,17 @@
             background: var(--offline);
         }
 
-        .status-offline .status-dot { background: var(--offline); }
-        .status-online .status-dot { background: var(--success); }
-        .status-recording .status-dot { background: var(--danger); }
+        .status-offline .status-dot {
+            background: var(--offline);
+        }
+
+        .status-online .status-dot {
+            background: var(--success);
+        }
+
+        .status-recording .status-dot {
+            background: var(--danger);
+        }
 
         .card-body {
             display: flex;
@@ -104,8 +113,8 @@
             transition: opacity 0.2s;
         }
 
-        .status-online ~ .card-body,
-        .status-recording ~ .card-body {
+        .card-online .card-body,
+        .card-recording .card-body {
             opacity: 1;
             pointer-events: auto;
         }
@@ -175,15 +184,18 @@
             gap: 0.5rem;
             margin-top: 1rem;
         }
+
         .btn-secondary {
             background-color: var(--text-muted);
             color: white;
         }
+
         .card-actions {
             margin-top: 0.5rem;
             display: flex;
             gap: 0.5rem;
         }
+
         dialog {
             border: 1px solid var(--border-color);
             border-radius: 0.5rem;
@@ -191,7 +203,11 @@
             background: var(--card-bg);
             width: 300px;
         }
-        dialog::backdrop { background: rgba(0,0,0,0.5); }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
         .dialog-buttons {
             display: flex;
             gap: 0.5rem;
@@ -199,6 +215,7 @@
         }
     </style>
 </head>
+
 <body>
     <header>
         <h1>Academy Laptop Monitor</h1>
@@ -206,7 +223,8 @@
         <div class="top-actions">
             <button onclick="openAddModal()" style="width: auto;">+ Add Laptop</button>
             <button onclick="exportLaptops()" class="btn-secondary" style="width: auto;">Export JSON</button>
-            <button onclick="document.getElementById('import-file').click()" class="btn-secondary" style="width: auto;">Import JSON</button>
+            <button onclick="document.getElementById('import-file').click()" class="btn-secondary"
+                style="width: auto;">Import JSON</button>
             <input type="file" id="import-file" style="display:none" accept=".json" onchange="importLaptops(event)">
         </div>
     </header>
@@ -240,7 +258,7 @@
     <script>
         // Configuration
         const AGENT_PORT = 8443;
-        
+
         let laptops = [];
         const defaultLaptops = [
             { id: 'LAPTOP-LOCAL', ip: '127.0.0.1', network: 'Network A' }
@@ -258,7 +276,7 @@
                 laptops = defaultLaptops;
             }
         }
-        
+
         function saveLaptopsToStorage() {
             localStorage.setItem('academy_laptops', JSON.stringify(laptops));
         }
@@ -275,7 +293,7 @@
 
             // Retry connections every 10 seconds for offline laptops
             setInterval(connectAll, 10000);
-            
+
             // Ping connected laptops every 5 seconds
             setInterval(pingAll, 5000);
         });
@@ -288,7 +306,7 @@
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.id = `card-${laptop.id}`;
-                
+
                 card.innerHTML = `
                     <div class="card-header">
                         <div>
@@ -395,7 +413,7 @@
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = function (e) {
                 try {
                     const imported = JSON.parse(e.target.result);
                     if (Array.isArray(imported)) {
@@ -427,7 +445,7 @@
         function connect(laptop) {
             try {
                 const ws = new WebSocket(`ws://${laptop.ip}:${AGENT_PORT}`);
-                
+
                 ws.onopen = () => {
                     connections.set(laptop.id, ws);
                     updateStatus(laptop.id, 'online');
@@ -470,7 +488,7 @@
             }
             mediaSource = new MediaSource();
             audioEl.src = URL.createObjectURL(mediaSource);
-            
+
             mediaSource.addEventListener('sourceopen', () => {
                 try {
                     sourceBuffer = mediaSource.addSourceBuffer('audio/ogg; codecs="opus"');
@@ -491,7 +509,7 @@
 
         function queueBuffer(buffer) {
             if (!sourceBuffer || mediaSource.readyState !== 'open') return;
-            
+
             if (!sourceBuffer.updating) {
                 try {
                     sourceBuffer.appendBuffer(buffer);
@@ -547,17 +565,19 @@
 
             statusBadge.className = `status-badge status-${state}`;
             const textSpan = statusBadge.querySelector('.status-text');
-            
+
             if (state === 'offline') textSpan.textContent = 'Offline';
             else if (state === 'online') textSpan.textContent = 'Online';
             else if (state === 'recording') textSpan.textContent = 'Recording';
 
-            // Toggle buttons
+            // Update card class for CSS-driven card-body enable/disable
             const card = document.getElementById(`card-${laptopId}`);
             if (card) {
+                card.className = `card card-${state}`;
+
                 const btnStart = card.querySelector('.btn-start');
                 const btnStop = card.querySelector('.btn-stop');
-                
+
                 if (state === 'offline') {
                     btnStart.disabled = true;
                     btnStop.disabled = true;
@@ -577,7 +597,7 @@
                 const titleInput = document.getElementById(`title-${laptopId}`);
                 const title = titleInput ? titleInput.value : 'recording';
                 ws.send(JSON.stringify({ command: 'start_recording', title: title }));
-                
+
                 // Optimistic UI update — show recording state immediately
                 updateStatus(laptopId, 'recording');
             }
@@ -587,7 +607,7 @@
             const ws = connections.get(laptopId);
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ command: 'stop_recording' }));
-                
+
                 // Optimistic UI update — revert to online state immediately
                 updateStatus(laptopId, 'online');
             }
@@ -596,7 +616,7 @@
         function toggleListen(laptopId) {
             const ws = connections.get(laptopId);
             const btnListen = document.getElementById(`card-${laptopId}`).querySelector('.btn-listen');
-            
+
             if (listeningTo === laptopId) {
                 // Stop listening
                 if (ws && ws.readyState === WebSocket.OPEN) {
@@ -619,18 +639,18 @@
                         oldBtn.style.backgroundColor = 'var(--success)';
                     }
                 }
-                
+
                 listeningTo = laptopId;
                 queue = []; // Clear queue
                 initAudio();
-                
+
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ command: 'start_listening' }));
                 }
-                
+
                 btnListen.textContent = 'Stop Listening';
                 btnListen.style.backgroundColor = 'var(--danger)';
-                
+
                 // Ensure audio is playing (requires user interaction first, which the button click provides)
                 const audioEl = document.getElementById('global-audio');
                 audioEl.play().catch(e => console.log('Autoplay prevented', e));
@@ -639,4 +659,5 @@
 
     </script>
 </body>
+
 </html>
