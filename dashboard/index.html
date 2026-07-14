@@ -104,8 +104,7 @@
             transition: opacity 0.2s;
         }
 
-        .status-online ~ .card-body,
-        .status-recording ~ .card-body {
+        .card-body.enabled {
             opacity: 1;
             pointer-events: auto;
         }
@@ -551,16 +550,20 @@
             // Toggle buttons
             const card = document.getElementById(`card-${laptopId}`);
             if (card) {
+                const cardBody = card.querySelector('.card-body');
                 const btnStart = card.querySelector('.btn-start');
                 const btnStop = card.querySelector('.btn-stop');
-                
+
                 if (state === 'offline') {
+                    cardBody.classList.remove('enabled');
                     btnStart.disabled = true;
                     btnStop.disabled = true;
                 } else if (state === 'recording') {
+                    cardBody.classList.add('enabled');
                     btnStart.disabled = true;
                     btnStop.disabled = false;
                 } else {
+                    cardBody.classList.add('enabled');
                     btnStart.disabled = false;
                     btnStop.disabled = true;
                 }
