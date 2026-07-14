@@ -1,0 +1,5 @@
+[
+    { "id": "LAPTOP-TEACHER-1", "ip": "192.168.1.101", "network": "Network A" },
+    { "id": "LAPTOP-TEACHER-2", "ip": "192.168.2.102", "network": "Network B" },
+    { "id": "LAPTOP-TEACHER-3", "ip": "192.168.3.103", "network": "Network C" }
+]
