@@ -170,17 +170,66 @@
             width: 100%;
         }
 
-        #global-audio {
-            display: none;
+        .top-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
         }
-
+        .btn-secondary {
+            background-color: var(--text-muted);
+            color: white;
+        }
+        .card-actions {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        dialog {
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            background: var(--card-bg);
+            width: 300px;
+        }
+        dialog::backdrop { background: rgba(0,0,0,0.5); }
+        .dialog-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>Academy Laptop Monitor</h1>
         <p>Direct LAN connection to teaching laptops.</p>
+        <div class="top-actions">
+            <button onclick="openAddModal()" style="width: auto;">+ Add Laptop</button>
+            <button onclick="exportLaptops()" class="btn-secondary" style="width: auto;">Export JSON</button>
+            <button onclick="document.getElementById('import-file').click()" class="btn-secondary" style="width: auto;">Import JSON</button>
+            <input type="file" id="import-file" style="display:none" accept=".json" onchange="importLaptops(event)">
+        </div>
     </header>
+
+    <dialog id="laptop-modal">
+        <h3 id="modal-title" style="margin-top:0">Add Laptop</h3>
+        <div class="input-group" style="margin-bottom:0.5rem">
+            <label>ID / Name</label>
+            <input type="text" id="modal-id" placeholder="e.g. LAPTOP-1">
+        </div>
+        <div class="input-group" style="margin-bottom:0.5rem">
+            <label>IP Address</label>
+            <input type="text" id="modal-ip" placeholder="e.g. 192.168.1.100">
+        </div>
+        <div class="input-group" style="margin-bottom:0.5rem">
+            <label>Network</label>
+            <input type="text" id="modal-network" placeholder="e.g. Network A">
+        </div>
+        <div class="dialog-buttons">
+            <button onclick="saveLaptopModal()">Save</button>
+            <button class="btn-secondary" onclick="document.getElementById('laptop-modal').close()">Cancel</button>
+        </div>
+    </dialog>
 
     <main class="grid" id="laptop-grid">
         <!-- Cards injected by JS -->
@@ -192,13 +241,29 @@
         // Configuration
         const AGENT_PORT = 8443;
         
-        // Hardcoded registry of laptops for this academy
-        const laptops = [
-            { id: 'LAPTOP-LOCAL', ip: '127.0.0.1', network: 'Network A' },
-            { id: 'LAPTOP-TEACHER-1', ip: '192.168.1.101', network: 'Network A' },
-            { id: 'LAPTOP-TEACHER-2', ip: '192.168.2.102', network: 'Network B' },
-            { id: 'LAPTOP-TEACHER-3', ip: '192.168.3.103', network: 'Network C' }
+        let laptops = [];
+        const defaultLaptops = [
+            { id: 'LAPTOP-LOCAL', ip: '127.0.0.1', network: 'Network A' }
         ];
+
+        function loadLaptops() {
+            const stored = localStorage.getItem('academy_laptops');
+            if (stored) {
+                try {
+                    laptops = JSON.parse(stored);
+                } catch (e) {
+                    laptops = defaultLaptops;
+                }
+            } else {
+                laptops = defaultLaptops;
+            }
+        }
+        
+        function saveLaptopsToStorage() {
+            localStorage.setItem('academy_laptops', JSON.stringify(laptops));
+        }
+
+        loadLaptops();
 
         // State
         const connections = new Map(); // id -> WebSocket
@@ -230,9 +295,15 @@
                             <h2 class="laptop-name">${laptop.id}</h2>
                             <span class="laptop-network">${laptop.network} - ${laptop.ip}</span>
                         </div>
-                        <div class="status-badge status-offline" id="status-${laptop.id}">
-                            <span class="status-dot"></span>
-                            <span class="status-text">Offline</span>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                            <div class="status-badge status-offline" id="status-${laptop.id}">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Offline</span>
+                            </div>
+                            <div class="card-actions">
+                                <button onclick="openEditModal('${laptop.id}')" style="padding:0.25rem 0.5rem; font-size:0.75rem">Edit</button>
+                                <button onclick="deleteLaptop('${laptop.id}')" style="padding:0.25rem 0.5rem; font-size:0.75rem; background:var(--danger); color:white;">Del</button>
+                            </div>
                         </div>
                     </div>
                     <div class="card-body">
@@ -249,6 +320,100 @@
                 `;
                 grid.appendChild(card);
             });
+        }
+
+        let editingLaptopId = null;
+
+        function openAddModal() {
+            editingLaptopId = null;
+            document.getElementById('modal-title').textContent = 'Add Laptop';
+            document.getElementById('modal-id').value = '';
+            document.getElementById('modal-ip').value = '';
+            document.getElementById('modal-network').value = '';
+            document.getElementById('laptop-modal').showModal();
+        }
+
+        function openEditModal(id) {
+            const laptop = laptops.find(l => l.id === id);
+            if (!laptop) return;
+            editingLaptopId = id;
+            document.getElementById('modal-title').textContent = 'Edit Laptop';
+            document.getElementById('modal-id').value = laptop.id;
+            document.getElementById('modal-ip').value = laptop.ip;
+            document.getElementById('modal-network').value = laptop.network;
+            document.getElementById('laptop-modal').showModal();
+        }
+
+        function saveLaptopModal() {
+            const newId = document.getElementById('modal-id').value.trim();
+            const newIp = document.getElementById('modal-ip').value.trim();
+            const newNet = document.getElementById('modal-network').value.trim();
+            if (!newId || !newIp) return alert('ID and IP are required');
+
+            if (editingLaptopId) {
+                const idx = laptops.findIndex(l => l.id === editingLaptopId);
+                if (idx > -1) {
+                    laptops[idx] = { id: newId, ip: newIp, network: newNet };
+                }
+                if (newId !== editingLaptopId && connections.has(editingLaptopId)) {
+                    connections.get(editingLaptopId).close();
+                    connections.delete(editingLaptopId);
+                }
+            } else {
+                if (laptops.find(l => l.id === newId)) return alert('ID already exists');
+                laptops.push({ id: newId, ip: newIp, network: newNet });
+            }
+
+            saveLaptopsToStorage();
+            document.getElementById('laptop-modal').close();
+            renderGrid();
+            connectAll();
+        }
+
+        function deleteLaptop(id) {
+            if (!confirm('Delete ' + id + '?')) return;
+            laptops = laptops.filter(l => l.id !== id);
+            saveLaptopsToStorage();
+            if (connections.has(id)) {
+                connections.get(id).close();
+                connections.delete(id);
+            }
+            renderGrid();
+        }
+
+        function exportLaptops() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(laptops, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "laptops.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importLaptops(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported)) {
+                        laptops = imported;
+                        saveLaptopsToStorage();
+                        connections.forEach(ws => ws.close());
+                        connections.clear();
+                        renderGrid();
+                        connectAll();
+                    } else {
+                        alert("Invalid JSON format. Expected an array.");
+                    }
+                } catch (err) {
+                    alert("Failed to parse JSON file.");
+                }
+                event.target.value = ''; // reset
+            };
+            reader.readAsText(file);
         }
 
         function connectAll() {
