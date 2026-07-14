@@ -17,7 +17,7 @@ let audioProcess = null;
 const audioListeners = new Set();
 
 // Audio Device Configuration (should be updated per laptop)
-const MIC_DEVICE = process.env.MIC_DEVICE || 'Microphone (Realtek(R) Audio)';
+const MIC_DEVICE = process.env.MIC_DEVICE || 'Microphone Array (2- Realtek(R) Audio)';
 
 // Setup Logger
 const logDir = path.join(os.homedir(), 'AcademyRecordings');
@@ -32,7 +32,7 @@ function log(message) {
     fs.appendFileSync(logFile, logLine);
     console.log(logLine.trim());
 }
-
+log(MIC_DEVICE)
 log(`Starting agent for laptop ${LAPTOP_ID} on port ${PORT}...`);
 
 // Initialize WebSocket Server
@@ -57,7 +57,7 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('error', (error) => {
-         log(`Connection error from ${clientIp}: ${error.message}`);
+        log(`Connection error from ${clientIp}: ${error.message}`);
     });
 });
 
@@ -150,7 +150,7 @@ function stopRecording() {
             message: 'Recording has stopped.',
             sound: true
         });
-        
+
         recordingProcess.stdin.write('q\n');
         log('Sent stop signal to recording process');
     }
@@ -174,7 +174,7 @@ function startListening(ws) {
     if (!audioListeners.has(ws)) {
         audioListeners.add(ws);
         listenersCount = audioListeners.size;
-        
+
         notifier.notify({
             title: 'Academy Monitor',
             message: 'Your audio is now being listened to for quality purposes.',
@@ -187,12 +187,12 @@ function startListening(ws) {
                 '-f', 'dshow',
                 '-i', `audio=${MIC_DEVICE}`,
                 '-c:a', 'libopus',
-                '-f', 'ogg',
+                '-f', 'webm',
                 'pipe:1' // Stream output to stdout
             ];
-            
+
             audioProcess = spawn('ffmpeg', ffmpegArgs);
-            
+
             audioProcess.stdout.on('data', (chunk) => {
                 for (const listener of audioListeners) {
                     if (listener.readyState === WebSocket.OPEN) {
@@ -200,7 +200,7 @@ function startListening(ws) {
                     }
                 }
             });
-            
+
             audioProcess.stderr.on('data', () => { /* ignore stderr */ });
 
             audioProcess.on('close', (code) => {
@@ -216,7 +216,7 @@ function stopListening(ws) {
     if (audioListeners.has(ws)) {
         audioListeners.delete(ws);
         listenersCount = audioListeners.size;
-        
+
         if (audioListeners.size === 0 && audioProcess) {
             notifier.notify({
                 title: 'Academy Monitor',
